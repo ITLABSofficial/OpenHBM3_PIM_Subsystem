@@ -62,30 +62,32 @@ The OpenHBM3_PIM subsystem integrates synthesizable hardware acceleration engine
 
 ### 2.1 16-Lane IEEE-754 True-FMA Vector Multiplier Engine
 
-At the core of the base die is a 16-lane vector execution unit (`rtl/pim/ara_hbm3_pim_true_fma.sv`). Each lane contains a fully pipelined IEEE-754 compliant True-Fused Multiply-Add datapath with an unrounded 48-bit internal mantissa accumulator. The vector datapath accepts operands directly from the TSV ingress FIFO at wire rate ($3.2\,\text{TB/s}$ aggregate), executing 16 multiply-accumulate operations per cycle:
+At the core of the base die is a dedicated 16-lane vector execution unit (`rtl/pim/ara_hbm3_pim_true_fma.sv`). Each lane contains a fully pipelined IEEE-754 compliant True-Fused Multiply-Add datapath with an unrounded 48-bit internal mantissa accumulator. The vector datapath accepts operands directly from the TSV ingress FIFO at wire rate (**3.2 TB/s aggregate internal TSV bandwidth** across 16 pseudo-channels), executing 16 multiply-accumulate operations per cycle:
 $$Throughput_{PIM} = 16 \text{ lanes} \times 2 \frac{\text{FLOPs}}{\text{cycle}} \times 16 \text{ channels} \times 1.0 \text{ GHz} = 512 \text{ GFLOPS per Stack}$$
-Across a 4-stack accelerator card, this provides **2.048 TFLOPS** of dedicated base-die compute operating directly against **12.8 TB/s** of memory bandwidth.
+Across a 4-stack accelerator card, this provides **2.048 TFLOPS** of dedicated base-die compute operating directly against **12.8 TB/s** of vertical memory bandwidth.
 
 Key multiplier microarchitectural features:
-1. **Multi-Precision Multipliers:** 16 parallel $11 \times 11$ mantissa multipliers (for FP16) and $8 \times 8$ (for BF16/INT8) producing exact 22-bit products ($mant\_p$) without lower-bit truncation.
-2. **Decoupled 2-Entry Skid Buffers:** Both weight inputs (`dram_rdata_i`, 256-bit) and activation inputs (`act_data_i`, 256-bit) are buffered by independent 2-entry double-buffered skid registers. Ready flags (`ready_o`, `act_ready_o`) are generated strictly from internal fullness counters, completely eliminating combinational loops between DRAM and host logic.
-3. **16-to-1 IEEE-754 Adder Reduction Tree:** In addition to 16 independent GEMV outputs (`res_data_o`), the datapath features a 4-level pipelined binary adder tree that reduces all 16 lane products into a single FP32 scalar dot product (`scalar_dot_o`) in hardware.
-4. **Catastrophic Cancellation Immunity & LZA:** A concurrent Leading-Zero Anticipator (LZA) predicts the shift amount in parallel with the 48-bit carry-propagate adder, capping rounding error at $\le 0.5\,\text{ULP}$ and resolving effective subtractions with zero bubble stalls.
+1. **Multi-Precision Multipliers:** 16 parallel $11 \times 11$ mantissa multipliers (for FP16) and $8 \times 8$ (for BF16/INT8) producing exact 22-bit products ($mant\_p$) without intermediate rounding or lower-bit truncation.
+2. **Decoupled 2-Entry Skid Buffers:** Both weight inputs (`dram_rdata_i`, 256-bit) and activation inputs (`act_data_i`, 256-bit) are buffered by independent 2-entry double-buffered skid registers. Ready flags (`ready_o`, `act_ready_o`) are generated strictly from internal fullness counters, completely eliminating combinational backpressure loops between DRAM core arrays and host logic.
+3. **48-Bit Unrounded Accumulator & LZA:** The exact 22-bit mantissa product is extended into a 48-bit internal accumulation register with upper sign extension and lower guard/round/sticky bits before addition with the aligned addend mantissa. A concurrent Leading-Zero Anticipator (LZA) predicts the shift amount in parallel with the 48-bit carry-propagate adder, capping numerical error at $\le 0.5\,\text{ULP}$ and resolving effective subtractions with zero bubble stalls.
+4. **16-to-1 IEEE-754 Adder Reduction Tree:** In addition to 16 independent GEMV vector lane outputs (`res_data_o`), the datapath features a 4-level pipelined binary adder reduction tree ($16 \rightarrow 8 \rightarrow 4 \rightarrow 2 \rightarrow 1$) that reduces all 16 lane products into a single FP32 scalar dot product (`scalar_dot_o`) in hardware, accelerating matrix-vector dot products for LLM projections.
 
 ### 2.2 Fused Activations (Continuous PWL SiLU / GELU / ReLU / Clamp)
 
 Non-linear activations like SwiGLU:
 $$\text{SwiGLU}(x, g) = (x \cdot \sigma(x)) \odot g, \quad \sigma(x) = \frac{1}{1 + e^{-x}}$$
 are evaluated directly at Stage 4 of the True-FMA pipeline (`ara_hbm3_pim_true_fma.sv`):
-- **Piecewise-Linear (PWL) Interpolation:** An 8-interval continuous minimax spline evaluates $f(x) \approx m_k \cdot x + b_k$ in 1 clock cycle with absolute error bound $|E| < 2.4 \times 10^{-4}$.
-- **Hardware Clamping & Rectification:** Supports zero-cost ReLU ($max(0, x)$) and configurable saturation bounds (e.g., $[-6.0, +6.0]$), preventing numerical overflows before results are committed back to DRAM or streamed to the host.
+- **Continuous Piecewise-Linear (PWL) Interpolation:** An 8-interval continuous minimax spline evaluates non-linear activation functions in hardware in 1 clock cycle:
+$$f(x) \approx m_k \cdot (x - x_k) + b_k, \quad x \in [x_k, x_{k+1})$$
+For SiLU and GELU, the absolute approximation error is strictly bounded by $|E| < 2.4 \times 10^{-4}$ across the dynamic range $x \in [-8.0, +8.0]$, with seamless linear saturation beyond interval boundaries.
+- **Hardware Clamping & Rectification:** Supports zero-cost ReLU ($\max(0, x)$) and configurable saturation bounds (e.g., $[-6.0, +6.0]$), preventing numerical overflows before results are committed back to DRAM or streamed to the host.
 
 ### 2.3 Decoupled Streaming Engine & Hardware Guard FSM
 
 Orchestrating autonomous memory traversal, `rtl/pim/ara_hbm3_pim_decoupled_fsm.sv` offloads the host CPU from managing low-level DRAM timing:
-- **Ping-Pong Dual-Bank Prefetching:** Alternates read requests between Bank A and Bank B across disjoint bank groups (`curr_ba`), completely hiding $t_{RP}$ precharge and $t_{RCD}$ activation delays.
+- **Dual-Bank Ping-Pong Prefetching:** Alternates read requests between Bank A and Bank B across disjoint bank groups (`curr_ba`), completely hiding $t_{RP}$ precharge and $t_{RCD}$ activation delays.
 - **Sliding-Window $t_{FAW}$ Limiter:** Tracks Four-Activate Window limits in hardware, preventing current spikes and PDN voltage collapse.
-- **Anti-Brick Watchdog Timer & Trap:** A 20-bit hardware watchdog timer decrements on every clock cycle. If DRAM response hangs or ECC uncorrectable errors occur, the FSM traps immediately (`pim_err_irq_o`), while the software abort strobe (`pim_force_abort_i`) guarantees instantaneous 1-cycle pipeline drainage.
+- **Anti-Brick Software Abort Watchdog:** A 20-bit hardware watchdog timer decrements on every clock cycle. If DRAM response hangs or ECC uncorrectable errors occur, the FSM traps immediately (`pim_err_irq_o`), while the software abort strobe (`pim_force_abort_i`) guarantees instantaneous 1-cycle pipeline drainage.
 
 ### 2.4 Active Interposer P2P Crossbar & Top Integration
 
@@ -112,16 +114,28 @@ This demonstrates a theoretical **$4.0\times$ throughput speedup** purely by rel
 
 ### 3.2 Energy-Per-Token Derivation
 
-Total energy consumption per token generated is expressed as:
-$$E_{token} = E_{compute} + E_{transport}$$
-$$E_{transport} = N_{params} \times 16\,\text{bits} \times \left(E_{DRAM\_array} + E_{I/O}\right)$$
+Total energy consumption per token generated during single-batch autoregressive inference (e.g., LLaMA-3 70B in FP16 precision, reading $N_{params} = 70 \times 10^9$ weights per token) is decomposed into transport and compute components:
+$$E_{token} = E_{transport} + E_{compute} = E_{I/O} + E_{tsv} + E_{compute}$$
 
-In conventional architectures, $E_{I/O}$ represents driving external 2.5D interposer micro-bumps ($E_{interposer} \approx 1.50\,\text{pJ/bit}$). In OpenHBM3_PIM, data is transferred exclusively across vertical TSVs ($E_{tsv} \approx 0.12\,\text{pJ/bit}$):
-$$E_{transport}^{(Host)} = 70 \times 10^9 \times 16 \times (5.0 + 1.50)\,\text{pJ} = 7.28\,\text{J/token}$$
-$$E_{transport}^{(PIM)} = 70 \times 10^9 \times 16 \times (5.0 \times 0.2 + 0.12)\,\text{pJ} = 0.38\,\text{J/token}$$
+1. **Host-Centric Baseline (No PIM):**
+   Transporting 70 billion 16-bit parameters ($1.12 \times 10^{12}\,\text{bits}$) across high-capacitance 2.5D interposer micro-bumps and traces ($E_{interposer} \approx 6.116\,\text{pJ/bit}$) accounts for:
+   $$E_{I/O}^{(Host)} = 6.85\,\text{J/token}$$
+   Host processor vector ALUs and multi-level cache hierarchies dissipate:
+   $$E_{compute}^{(Host)} = 1.55\,\text{J/token}$$
+   Yielding a total baseline energy consumption of:
+   $$E_{total}^{(Host)} = 6.85\,\text{J} + 1.55\,\text{J} = 8.40\,\text{J/token}$$
 
-Adding ALU compute energy ($E_{compute} \approx 0.04\,\text{J/token}$), total energy per token is:
-$$E_{total}^{(Host)} = 8.40\,\text{J/token} \quad \text{vs.} \quad E_{total}^{(PIM)} = 0.42\,\text{J/token}$$
+2. **OpenHBM3 Base-Die PIM (Ours):**
+   Parameters are intercepted directly at the base of vertical Through-Silicon Vias ($L_{tsv} \approx 50\,\mu\text{m}$, $C_{tsv} \approx 25\,\text{fF}$, $E_{tsv} \approx 0.107\,\text{pJ/bit}$):
+   $$E_{tsv} = 1.12 \times 10^{12} \times 0.107 \times 10^{-12}\,\text{J} = 0.12\,\text{J/token}$$
+   Off-chip interposer traffic is eliminated for weight parameters and restricted solely to token embeddings and command descriptors:
+   $$E_{I/O}^{(PIM)} = 0.15\,\text{J/token}$$
+   The tightly integrated near-memory True-FMA logic eliminates long on-chip distribution wiring, reducing active compute energy to:
+   $$E_{compute}^{(PIM)} = 0.15\,\text{J/token}$$
+   Summing all components yields an aggregate energy consumption of:
+   $$E_{total}^{(PIM)} = E_{I/O}^{(PIM)} + E_{tsv} + E_{compute}^{(PIM)} = 0.15\,\text{J} + 0.12\,\text{J} + 0.15\,\text{J} = 0.42\,\text{J/token}$$
+
+$$\text{Net Energy Speedup} = \frac{E_{total}^{(Host)}}{E_{total}^{(PIM)}} = \frac{8.40\,\text{J}}{0.42\,\text{J}} = \mathbf{20.0\times}$$
 
 ![Figure 2: Energy per Token](figures/fig2_energy_per_token.png)
 
