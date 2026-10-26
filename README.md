@@ -2,6 +2,7 @@
 **3.2 TB/s Internal TSV Bandwidth, Decoupled True-FMA, GEMV, RMSNorm & FlashAttention Subsystem**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Academic Paper](https://img.shields.io/badge/Research_Paper-Read_PAPER.md-blueviolet.svg)](PAPER.md)
 [![Architecture](https://img.shields.io/badge/Architecture-Base--Die_PIM-blueviolet.svg)]()
 [![Bandwidth](https://img.shields.io/badge/Internal_TSV_BW-3.2_TB%2Fs_per_Stack-brightgreen.svg)]()
 [![Energy](https://img.shields.io/badge/Energy_Efficiency-0.42_J%2FToken-success.svg)]()
