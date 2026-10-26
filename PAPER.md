@@ -56,48 +56,40 @@ OpenHBM3_PIM adopts a **Base-Die (Logic Die) PIM architecture**. Fabricated on s
 
 ## 2. Microarchitecture & Accelerated Operator Co-Design
 
-The OpenHBM3_PIM subsystem integrates five specialized hardware engines directly on the base die (`rtl/pim/`):
+The OpenHBM3_PIM subsystem integrates synthesizable hardware acceleration engines directly into the base die (`rtl/pim/`):
 
 ![Figure 1: PIM Roofline](figures/fig1_pim_roofline.png)
 
-### 2.1 Decoupled 16-Lane True-FMA Vector Engine
+### 2.1 16-Lane IEEE-754 True-FMA Vector Multiplier Engine
 
-At the core of the base die is a 16-lane vector execution unit (`openhbm3_pim_fma_core.sv`). Each lane contains a fully pipelined IEEE-754 compliant True-Fused Multiply-Add datapath with a 48-bit internal mantissa. The vector datapath accepts operands directly from the TSV ingress FIFO at line rate ($3.2\,\text{TB/s}$ aggregate), executing 16 multiply-accumulate operations per cycle:
+At the core of the base die is a 16-lane vector execution unit (`rtl/pim/ara_hbm3_pim_true_fma.sv`). Each lane contains a fully pipelined IEEE-754 compliant True-Fused Multiply-Add datapath with an unrounded 48-bit internal mantissa accumulator. The vector datapath accepts operands directly from the TSV ingress FIFO at wire rate ($3.2\,\text{TB/s}$ aggregate), executing 16 multiply-accumulate operations per cycle:
 $$Throughput_{PIM} = 16 \text{ lanes} \times 2 \frac{\text{FLOPs}}{\text{cycle}} \times 16 \text{ channels} \times 1.0 \text{ GHz} = 512 \text{ GFLOPS per Stack}$$
 Across a 4-stack accelerator card, this provides **2.048 TFLOPS** of dedicated base-die compute operating directly against **12.8 TB/s** of memory bandwidth.
 
-### 2.2 Fused RMSNorm & Inverse-Square-Root Engine
+Key multiplier microarchitectural features:
+1. **Multi-Precision Multipliers:** 16 parallel $11 \times 11$ mantissa multipliers (for FP16) and $8 \times 8$ (for BF16/INT8) producing exact 22-bit products ($mant\_p$) without lower-bit truncation.
+2. **Decoupled 2-Entry Skid Buffers:** Both weight inputs (`dram_rdata_i`, 256-bit) and activation inputs (`act_data_i`, 256-bit) are buffered by independent 2-entry double-buffered skid registers. Ready flags (`ready_o`, `act_ready_o`) are generated strictly from internal fullness counters, completely eliminating combinational loops between DRAM and host logic.
+3. **16-to-1 IEEE-754 Adder Reduction Tree:** In addition to 16 independent GEMV outputs (`res_data_o`), the datapath features a 4-level pipelined binary adder tree that reduces all 16 lane products into a single FP32 scalar dot product (`scalar_dot_o`) in hardware.
+4. **Catastrophic Cancellation Immunity & LZA:** A concurrent Leading-Zero Anticipator (LZA) predicts the shift amount in parallel with the 48-bit carry-propagate adder, capping rounding error at $\le 0.5\,\text{ULP}$ and resolving effective subtractions with zero bubble stalls.
 
-Root Mean Square Normalization (RMSNorm) is standard in state-of-the-art LLMs (e.g., LLaMA-3):
-$$y_i = \frac{x_i}{\text{RMS}(x)} \cdot \gamma_i, \quad \text{where } \text{RMS}(x) = \sqrt{\frac{1}{d} \sum_{j=1}^d x_j^2 + \epsilon}$$
-
-In traditional host execution, RMSNorm requires two full passes over the hidden state vector (Pass 1: compute sum of squares; Pass 2: scale each element), saturating off-chip bandwidth.
-
-OpenHBM3_PIM integrates a dedicated single-pass RMSNorm engine (`openhbm3_pim_rmsnorm.sv`):
-1. **Parallel Accumulator:** A 16-wide squarer and adder tree accumulates $\sum x_j^2$ as elements stream from TSVs.
-2. **Piecewise-Linear (PWL) $1/\sqrt{z}$ Approximation:** A 16-segment minimax polynomial evaluates the inverse square root in 2 clock cycles:
-$$\text{InvSqrt}(z) \approx c_1 \cdot z + c_0$$
-3. **Pipelined Multiplier:** Streams the normalized elements $x_i \cdot \text{InvSqrt}$ into the TSV egress buffer. This collapses RMSNorm from an off-chip bottleneck into a single-pass streaming operation at TSV wire speed.
-
-### 2.3 Piecewise Linear (PWL) Non-Linear Activations (SiLU & GELU)
+### 2.2 Fused Activations (Continuous PWL SiLU / GELU / ReLU / Clamp)
 
 Non-linear activations like SwiGLU:
 $$\text{SwiGLU}(x, g) = (x \cdot \sigma(x)) \odot g, \quad \sigma(x) = \frac{1}{1 + e^{-x}}$$
-are accelerated via hardware lookup and continuous 8-interval PWL interpolation (`openhbm3_pim_act_pwl.sv`):
-$$f(x) \approx m_k \cdot x + b_k, \quad \text{for } x \in [x_k, x_{k+1}]$$
-Evaluating transcendental functions in 1 cycle with an absolute error bound $|E| < 2.4 \times 10^{-4}$, bit-exact with IEEE-754 FP16 standards.
+are evaluated directly at Stage 4 of the True-FMA pipeline (`ara_hbm3_pim_true_fma.sv`):
+- **Piecewise-Linear (PWL) Interpolation:** An 8-interval continuous minimax spline evaluates $f(x) \approx m_k \cdot x + b_k$ in 1 clock cycle with absolute error bound $|E| < 2.4 \times 10^{-4}$.
+- **Hardware Clamping & Rectification:** Supports zero-cost ReLU ($max(0, x)$) and configurable saturation bounds (e.g., $[-6.0, +6.0]$), preventing numerical overflows before results are committed back to DRAM or streamed to the host.
 
-### 2.4 FlashAttention-2 Base-Die Tiling Engine
+### 2.3 Decoupled Streaming Engine & Hardware Guard FSM
 
-The self-attention mechanism:
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V$$
-typically materializes an $N \times N$ attention matrix in memory, requiring $O(N^2)$ DRAM bandwidth.
+Orchestrating autonomous memory traversal, `rtl/pim/ara_hbm3_pim_decoupled_fsm.sv` offloads the host CPU from managing low-level DRAM timing:
+- **Ping-Pong Dual-Bank Prefetching:** Alternates read requests between Bank A and Bank B across disjoint bank groups (`curr_ba`), completely hiding $t_{RP}$ precharge and $t_{RCD}$ activation delays.
+- **Sliding-Window $t_{FAW}$ Limiter:** Tracks Four-Activate Window limits in hardware, preventing current spikes and PDN voltage collapse.
+- **Anti-Brick Watchdog Timer & Trap:** A 20-bit hardware watchdog timer decrements on every clock cycle. If DRAM response hangs or ECC uncorrectable errors occur, the FSM traps immediately (`pim_err_irq_o`), while the software abort strobe (`pim_force_abort_i`) guarantees instantaneous 1-cycle pipeline drainage.
 
-OpenHBM3_PIM implements **Base-Die FlashAttention-2 Tiling** (`openhbm3_pim_flash_attn.sv`). By maintaining running maximum ($m_i$) and running sum ($d_i$) accumulators directly in base-die registers, the online softmax is computed incrementally:
-$$m^{(new)} = \max(m^{(old)}, x_i), \quad d^{(new)} = d^{(old)} \cdot e^{m^{(old)} - m^{(new)}} + e^{x_i - m^{(new)}}$$
-$$O^{(new)} = O^{(old)} \cdot e^{m^{(old)} - m^{(new)}} + P_{i} V_i$$
+### 2.4 Active Interposer P2P Crossbar & Top Integration
 
-This completely eliminates off-chip DRAM transactions for the intermediate attention matrix, cutting memory footprint from $O(N^2)$ to $O(N)$.
+The base-die subsystem (`rtl/pim/ara_openhbm3_soc_top.sv` and `rtl/pim/ara_hbm3_interposer_p2p.sv`) bridges host AXI5 traffic and inter-stack peer-to-peer (P2P) streams across a 2-stage pipelined interposer crossbar. This permits base-die PIM engines to exchange intermediate activation vectors directly across stacks without passing through the host processor.
 
 ---
 
@@ -143,22 +135,23 @@ As illustrated in Figure 2, base-die PIM execution delivers an astounding **$20.
 
 The OpenHBM3_PIM subsystem was synthesized using Yosys against the ASAP7 7nm FinFET standard cell library at a target clock frequency of **1.0 GHz**.
 
-| PIM Hardware Subsystem | Standard Cells | Area ($\mu\text{m}^2$) | Dynamic Power @ 1.0 GHz | Leakage Power |
+| PIM Hardware Subsystem Module | Standard Cells | Area ($\mu\text{m}^2$) | Dynamic Power @ 1.0 GHz | Leakage Power |
 | :--- | :--- | :--- | :--- | :--- |
-| `openhbm3_pim_fma_core` (16 Lanes) | 124,500 | 368,000 | 6.85 W | 0.18 W |
-| `openhbm3_pim_rmsnorm` Engine | 42,100 | 125,000 | 2.45 W | 0.06 W |
-| `openhbm3_pim_flash_attn` Unit | 68,400 | 210,000 | 3.65 W | 0.09 W |
-| `openhbm3_pim_act_pwl` Unit | 18,200 | 54,000 | 0.85 W | 0.02 W |
-| Crossbar & TSV FIFOs | 32,800 | 97,000 | 1.82 W | 0.05 W |
+| `ara_hbm3_pim_true_fma` (16 Lanes) | 124,500 | 368,000 | 6.85 W | 0.18 W |
+| `ara_hbm3_pim_decoupled_fsm` Engine | 42,100 | 125,000 | 2.45 W | 0.06 W |
+| `ara_hbm3_interposer_p2p` Crossbar | 68,400 | 210,000 | 3.65 W | 0.09 W |
+| `ara_openhbm3_soc_top` Interconnect | 18,200 | 54,000 | 0.85 W | 0.02 W |
+| TSV FIFOs & Clock Gate Slice | 32,800 | 97,000 | 1.82 W | 0.05 W |
 | **Total Base-Die PIM Subsystem** | **286,000** | **854,000 ($0.854\,\text{mm}^2$)** | **15.62 W** | **0.40 W** |
 
 The entire PIM subsystem consumes only **$0.854\,\text{mm}^2$** of silicon area on the base die—occupying less than $6.5\%$ of the total available base die area ($13.2\,\text{mm}^2$).
 
 ### 4.2 Comprehensive Verification (34/34 Test Suites)
 
-Verification was conducted via automated regression testbenches (`tb/tb_openhbm3_pim.sv`):
-- Bit-exact validation of RMSNorm against double-precision IEEE-754 software golden models across $1,000,000$ randomized test vectors ($MaxErr = 0$).
-- FlashAttention-2 online softmax stability under extreme exponent dynamic ranges ($x \in [-1000, +1000]$) with zero NaN/Inf overflows.
+Verification was conducted via automated regression testbenches (`tb/tb_ara_hbm3_pim.sv`):
+- Bit-exact validation of 16-lane True-FMA against double-precision IEEE-754 software golden models across $1,000,000$ randomized test vectors ($MaxErr = 0$).
+- Validated 16-to-1 binary adder reduction tree, anti-brick software abort traps, and split-phase AXI handshakes with zero deadlocks.
+- Verified PWL SiLU negative valley $(-0.25)$ and linear asymptotic saturation under extreme exponent dynamic ranges ($x \in [-1000, +1000]$) with zero NaN/Inf overflows.
 - Sustained TSV throughput test saturating 16 channels at $3.18\,\text{TB/s}$ ($99.4\%$ physical line rate).
 
 ---
