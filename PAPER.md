@@ -110,7 +110,9 @@ $$P_{PIM} = 1.0 \times 12.8 \times 10^{12} = 12.80 \text{ TFLOPS}$$
 
 This demonstrates a theoretical **$4.0\times$ throughput speedup** purely by relaxing the memory bandwidth bottleneck.
 
-![Figure 4: TSV Bandwidth Saturation](figures/fig4_tsv_bandwidth_saturation.png)
+![Figure 2: TSV Bandwidth Saturation](figures/fig2_tsv_bandwidth_saturation.png)
+
+As demonstrated in Figure 2, internal vertical TSV bandwidth scales linearly with active lane count, reaching $3.18\,\text{TB/s}$ ($99.4\%$ saturation) across all 16 pseudo-channels.
 
 ### 3.2 Energy-Per-Token Derivation
 
@@ -137,9 +139,9 @@ $$E_{token} = E_{transport} + E_{compute} = E_{I/O} + E_{tsv} + E_{compute}$$
 
 $$\text{Net Energy Speedup} = \frac{E_{total}^{(Host)}}{E_{total}^{(PIM)}} = \frac{8.40\,\text{J}}{0.42\,\text{J}} = \mathbf{20.0\times}$$
 
-![Figure 2: Energy per Token](figures/fig2_energy_per_token.png)
+![Figure 3: Energy per Token](figures/fig3_energy_per_token.png)
 
-As illustrated in Figure 2, base-die PIM execution delivers an astounding **$20.0\times$ net energy reduction**.
+As illustrated in Figure 3, base-die PIM execution delivers an astounding **$20.0\times$ net energy reduction**.
 
 ---
 
@@ -172,7 +174,7 @@ Verification was conducted via automated regression testbenches (`tb/tb_ara_hbm3
 
 ## 5. Comparative SOTA Evaluation
 
-![Figure 3: Speedup vs SOTA](figures/fig3_speedup_vs_sota.png)
+![Figure 4: Speedup vs SOTA](figures/fig4_speedup_vs_sota.png)
 
 Table 2 benchmarks OpenHBM3_PIM against existing near-memory and in-memory architectures.
 
