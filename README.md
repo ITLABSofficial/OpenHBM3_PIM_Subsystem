@@ -7,6 +7,9 @@
 [![Energy](https://img.shields.io/badge/Energy_Efficiency-0.42_J%2FToken-success.svg)]()
 [![Verification](https://img.shields.io/badge/Verification-34%2F34_Suites_PASS-brightgreen.svg)]()
 
+
+> 🧭 **Silicon Stack Navigation:** [Architecture Home](https://github.com/ITLABSofficial) &nbsp;•&nbsp; [⬅️ Prev: Open_HBM3_Controller](https://github.com/ITLABSofficial/Open_HBM3_Controller) &nbsp;•&nbsp; **Layer 03: `OpenHBM3_PIM_Subsystem`** &nbsp;•&nbsp; [Next: Ara_Core_TrueFMA_Systolic ➡️](https://github.com/ITLABSofficial/Ara_Core_TrueFMA_Systolic)
+
 **OpenHBM3_PIM_Subsystem** is an open-source, fully synthesizable silicon IP core that embeds domain-specific AI acceleration directly into the **HBM3 Base-Die (Logic Die)** positioned directly beneath the 3D-stacked DRAM layers. By executing memory-bandwidth-bound matrix and vector operations directly at the base of Through-Silicon Vias (TSVs), it eliminates the Von-Neumann off-chip memory wall.
 
 ---
@@ -111,3 +114,39 @@ make all
 ## 4. Hardware Documentation Links
 - **[Hardware Integration & Pinout Guide](INTEGRATION_GUIDE.md)**: Detailed MMIO command registers, opcode definitions, voltage regulators, and thermal sensors.
 - **[Verification & Performance Benchmarks](BENCHMARKS.md)**: Empirically verified speedups, roofline arithmetic intensity, and energy per token.
+
+---
+
+## 🗺️ Silicon Architecture Stack & Next-Page Navigation
+
+This repository represents **Layer 03** of our 8-layer unified silicon supercomputing stack. You can navigate sequentially through the entire hardware hierarchy:
+
+```
+[01: PHY Layer] ➔ [02: Memory Controller] ➔ [03: Near-Memory PIM] ➔ [04: Ara Core True-FMA]
+       ➔ [05: Cluster NoC] ➔ [06: 16-Core SoC] ➔ [07: 64-Core PCIe Card] ➔ [08: 16K WSE Wafer]
+```
+
+| Layer | Hardware Component | GitHub Repository | Key Architectural Specifications | Status |
+|:---:|:---|:---|:---|:---:|
+| **01** | **Physical Layer (PHY)** | [**`Open_HBM3_PHY`**](https://github.com/ITLABSofficial/Open_HBM3_PHY) | 1.18 TB/s HBM3E PHY, 8:1 SerDes, DFE/CTLE, 4.6 GHz WCK, DFI 5.0 | Active |
+| **02** | **Memory Controller** | [**`Open_HBM3_Controller`**](https://github.com/ITLABSofficial/Open_HBM3_Controller) | 16-Pseudo-Channel DFI 5.0 Controller, SECDED ECC, Bank Interleaving | Active |
+| **03** | **Near-Memory PIM** | [**`OpenHBM3_PIM_Subsystem` (Current)**](https://github.com/ITLABSofficial/OpenHBM3_PIM_Subsystem) | 3.2 TB/s Base-Die PIM Engine, FlashAttention, RMSNorm, True-FMA | Active |
+| **04** | **Compute Core** | [**`Ara_Core_TrueFMA_Systolic`**](https://github.com/ITLABSofficial/Ara_Core_TrueFMA_Systolic) | 16x16 Systolic Array & 6-Stage 2.0 GHz True-FMA (1.024 TFLOPS FP16) | Active |
+| **05** | **Cluster Interconnect** | [**`Ara_Cluster_TCDM_NoC`**](https://github.com/ITLABSofficial/Ara_Cluster_TCDM_NoC) | 4-Core Vector Cluster, 32-Bank TCDM SRAM (256 GB/s), 5-Port VC Router | Active |
+| **06** | **Multicore SoC** | [**`Ara_16Core_2x2_SoC`**](https://github.com/ITLABSofficial/Ara_16Core_2x2_SoC) | 16-Core GALS NoC Multicore SoC, 4-Zone PDN Stagger, Linux C Driver | Active |
+| **07** | **Board / Accelerator** | [**`Ara_PCIe_AI_Accelerator_64Core`**](https://github.com/ITLABSofficial/Ara_PCIe_AI_Accelerator_64Core) | 64-Core PCIe Gen5 x16 AI Card, 128 GB HBM3e Address Space (229W TDP) | Active |
+| **08** | **Wafer-Scale Engine** | [**`WSE_16K_Wafer_Scale_Engine`**](https://github.com/ITLABSofficial/WSE_16K_Wafer_Scale_Engine) | 300mm Monolithic 16,384-Core Wafer Engine, 48x HBM3 (1.15 TB), 15 kW | Active |
+
+<div align="center">
+
+| ⬅️ **Previous Component** | 🏠 **Architecture Ecosystem** | ➡️ **Next Component** |
+|:---:|:---:|:---:|
+| [**⬅️ Open_HBM3_Controller**](https://github.com/ITLABSofficial/Open_HBM3_Controller) | [**ITLABSofficial Profile**](https://github.com/ITLABSofficial) | [**Ara_Core_TrueFMA_Systolic ➔**](https://github.com/ITLABSofficial/Ara_Core_TrueFMA_Systolic) |
+
+</div>
+
+---
+
+## License
+
+This project is licensed under the **Apache License 2.0** - see the [LICENSE](LICENSE) file for details.
