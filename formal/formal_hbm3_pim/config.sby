@@ -1,0 +1,13 @@
+[options]
+mode bmc
+depth 10
+
+[engines]
+smtbmc z3
+
+[script]
+read -formal ara_hbm3_pim_decoupled_fsm.sv
+prep -top ara_hbm3_pim_decoupled_fsm
+
+[files]
+openhbm3_soc/rtl/pim/ara_hbm3_pim_decoupled_fsm.sv

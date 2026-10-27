@@ -1,0 +1,40 @@
+SBY 19:32:07 [formal/formal_hbm3_pim] Removing directory '/run/media/it/WD_HDD/Sierra hmb bellekler/show/Ara_MultiCore_WSE_HBM3/formal/formal_hbm3_pim'.
+SBY 19:32:07 [formal/formal_hbm3_pim] Copy '/run/media/it/WD_HDD/Sierra hmb bellekler/show/Ara_MultiCore_WSE_HBM3/openhbm3_soc/rtl/pim/ara_hbm3_pim_decoupled_fsm.sv' to '/run/media/it/WD_HDD/Sierra hmb bellekler/show/Ara_MultiCore_WSE_HBM3/formal/formal_hbm3_pim/src/ara_hbm3_pim_decoupled_fsm.sv'.
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: smtbmc z3
+SBY 19:32:08 [formal/formal_hbm3_pim] base: starting process "cd formal/formal_hbm3_pim/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY 19:32:08 [formal/formal_hbm3_pim] base: Warning: Replacing memory \act_time_stamp with list of registers. See ara_hbm3_pim_decoupled_fsm.sv:122
+SBY 19:32:08 [formal/formal_hbm3_pim] base: finished (returncode=0)
+SBY 19:32:08 [formal/formal_hbm3_pim] prep: starting process "cd formal/formal_hbm3_pim/model; yosys -ql design_prep.log design_prep.ys"
+SBY 19:32:08 [formal/formal_hbm3_pim] prep: finished (returncode=0)
+SBY 19:32:08 [formal/formal_hbm3_pim] smt2: starting process "cd formal/formal_hbm3_pim/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY 19:32:08 [formal/formal_hbm3_pim] smt2: finished (returncode=0)
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: starting process "cd formal/formal_hbm3_pim; yosys-smtbmc -s z3 --presat --noprogress -t 10  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Solver: z3
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 0..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 0..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 1..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 1..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 2..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 2..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 3..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 3..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 4..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 4..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 5..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 5..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 6..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 6..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 7..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 7..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 8..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 8..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assumptions in step 9..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Checking assertions in step 9..
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: ##   0:00:00  Status: passed
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: finished (returncode=0)
+SBY 19:32:08 [formal/formal_hbm3_pim] engine_0: Status returned by engine: pass
+SBY 19:32:08 [formal/formal_hbm3_pim] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:32:08 [formal/formal_hbm3_pim] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:32:08 [formal/formal_hbm3_pim] summary: engine_0 (smtbmc z3) returned pass
+SBY 19:32:08 [formal/formal_hbm3_pim] summary: engine_0 did not produce any traces
+SBY 19:32:08 [formal/formal_hbm3_pim] DONE (PASS, rc=0)

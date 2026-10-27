@@ -1,0 +1,13 @@
+[options]
+mode bmc
+depth 6
+
+[engines]
+smtbmc z3
+
+[script]
+read -formal ara_hbm3_pim_true_fma.sv
+prep -top ara_hbm3_pim_true_fma
+
+[files]
+openhbm3_soc/rtl/pim/ara_hbm3_pim_true_fma.sv
